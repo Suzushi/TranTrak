@@ -26,5 +26,29 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-This first slice intentionally has no third-party dependency. The visual
-estimator will be added behind an interface after the core behavior is stable.
+The core test build has no third-party dependency. To build the macOS camera
+diagnostic, install CMake, OpenCV, and ONNX Runtime, then copy the compatible
+models described in [`models/README.md`](models/README.md):
+
+```sh
+brew install cmake opencv onnxruntime
+```
+
+Configure the optional targets:
+
+```sh
+cmake -S . -B build \
+  -DTRACKHEADER_BUILD_VISION=ON \
+  -DTRACKHEADER_BUILD_MACOS_DIAGNOSTIC=ON
+cmake --build build --target trackheader_macos_diagnostic
+./build/trackheader_macos_diagnostic
+```
+
+The diagnostic expects these model files under `models/` by default:
+
+- `face_detection_yunet_2023mar.onnx`
+- `lm_model1_opt.onnx`
+- `model_66.txt`
+
+Use `--yunet`, `--landmark`, and `--face-model` to point at another model
+directory. Press `C` to recenter and `Esc` to quit.

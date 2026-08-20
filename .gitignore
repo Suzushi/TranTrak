@@ -3,3 +3,6 @@ cmake-build-*/
 .DS_Store
 compile_commands.json
 
+# Local model files are large and their redistribution terms vary.
+models/*.onnx
+models/model_66.txt
