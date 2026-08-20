@@ -39,7 +39,9 @@ Configure the optional targets:
 ```sh
 cmake -S . -B build \
   -DTRACKHEADER_BUILD_VISION=ON \
-  -DTRACKHEADER_BUILD_MACOS_DIAGNOSTIC=ON
+  -DTRACKHEADER_BUILD_MACOS_DIAGNOSTIC=ON \
+  -DOpenCV_DIR="$(brew --prefix opencv)/lib/cmake/opencv5" \
+  -Donnxruntime_DIR="$(brew --prefix onnxruntime)/lib/cmake/onnxruntime"
 cmake --build build --target trackheader_macos_diagnostic
 ./build/trackheader_macos_diagnostic
 ```

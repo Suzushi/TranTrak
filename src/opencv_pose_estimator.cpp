@@ -144,8 +144,7 @@ struct YuNet
         try {
             detector = cv::FaceDetectorYN::create(
                 config.yunet_model_path, "", cv::Size(0, 0),
-                config.face_score_threshold, config.face_nms_threshold,
-                cv::FaceDetectorYN::DISALLOW_PADDINGS);
+                config.face_score_threshold, config.face_nms_threshold);
         } catch (const cv::Exception& error) {
             std::fprintf(stderr, "yunet: failed to load '%s': %s\n",
                          config.yunet_model_path.c_str(), error.what());

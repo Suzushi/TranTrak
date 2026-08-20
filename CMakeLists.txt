@@ -30,8 +30,18 @@ if(TRACKHEADER_BUILD_TESTS)
 endif()
 
 if(TRACKHEADER_BUILD_VISION OR TRACKHEADER_BUILD_MACOS_DIAGNOSTIC)
-    find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio highgui calib3d objdetect)
+    find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio highgui objdetect)
     find_package(onnxruntime CONFIG REQUIRED)
+
+    # OpenCV 5 renamed the calib3d CMake target to calib while retaining the
+    # public calib3d.hpp header. Keep the adapter compatible with OpenCV 4 too.
+    if(TARGET opencv_calib)
+        set(TRACKHEADER_OPENCV_CALIB_TARGET opencv_calib)
+    elseif(TARGET opencv_calib3d)
+        set(TRACKHEADER_OPENCV_CALIB_TARGET opencv_calib3d)
+    else()
+        message(FATAL_ERROR "TrackHeader requires OpenCV's calib3d module")
+    endif()
 
     add_library(trackheader_vision STATIC
         src/opencv_pose_estimator.cpp
@@ -42,6 +52,7 @@ if(TRACKHEADER_BUILD_VISION OR TRACKHEADER_BUILD_MACOS_DIAGNOSTIC)
     target_link_libraries(trackheader_vision PUBLIC
         trackheader_core
         ${OpenCV_LIBS}
+        ${TRACKHEADER_OPENCV_CALIB_TARGET}
         onnxruntime::onnxruntime
     )
     target_compile_features(trackheader_vision PUBLIC cxx_std_17)
