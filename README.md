@@ -102,10 +102,14 @@ the same model paths used by the macOS diagnostic:
 cmake -S . -B build \
   -DTRACKHEADER_BUILD_VISION=ON \
   -DTRACKHEADER_BUILD_WINDOWS_APP=ON \
-  -DOpenCV_DIR=... -Donnxruntime_DIR=...
+  -DOpenCV_DIR="C:/dev/opencv/opencv/build" \
+  -DONNXRUNTIME_ROOT="C:/dev/onnxruntime-x64"
 cmake --build build --target trackheader_windows_app
 ./build/trackheader_windows_app --no-freetrack --frames 300
 ```
 
 It uses DirectShow through OpenCV, sends FreeTrack by default, optionally
 sends UDP, and binds `Alt+C` for recentering. `Ctrl+C` stops the process.
+`ONNXRUNTIME_ROOT` must contain `include/onnxruntime_cxx_api.h`,
+`lib/onnxruntime.lib`, and `lib/onnxruntime.dll` (or `bin/onnxruntime.dll`).
+The DLL is copied next to the executable after a successful build.

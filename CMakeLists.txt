@@ -11,6 +11,8 @@ option(TRACKHEADER_BUILD_VISION "Build OpenCV/ONNX Runtime vision adapter" OFF)
 option(TRACKHEADER_BUILD_MACOS_DIAGNOSTIC "Build the macOS camera diagnostic" OFF)
 option(TRACKHEADER_BUILD_REPLAY "Build the offline video replay tool" OFF)
 option(TRACKHEADER_BUILD_WINDOWS_APP "Build the Windows head-tracking host" OFF)
+set(ONNXRUNTIME_ROOT "" CACHE PATH
+    "ONNX Runtime package root containing include/ and lib/")
 
 add_library(trackheader_core STATIC
     src/pose_mapper.cpp
@@ -50,7 +52,57 @@ endif()
 if(TRACKHEADER_BUILD_VISION OR TRACKHEADER_BUILD_MACOS_DIAGNOSTIC OR
    TRACKHEADER_BUILD_REPLAY OR TRACKHEADER_BUILD_WINDOWS_APP)
     find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio highgui objdetect)
-    find_package(onnxruntime CONFIG REQUIRED)
+
+    if(ONNXRUNTIME_ROOT)
+        find_path(TRACKHEADER_ONNXRUNTIME_INCLUDE_DIR
+            NAMES onnxruntime_cxx_api.h
+            PATHS "${ONNXRUNTIME_ROOT}/include"
+            NO_DEFAULT_PATH
+        )
+        find_library(TRACKHEADER_ONNXRUNTIME_LIBRARY
+            NAMES onnxruntime
+            PATHS "${ONNXRUNTIME_ROOT}/lib"
+            NO_DEFAULT_PATH
+        )
+        find_file(TRACKHEADER_ONNXRUNTIME_DLL
+            NAMES onnxruntime.dll
+            PATHS
+                "${ONNXRUNTIME_ROOT}/lib"
+                "${ONNXRUNTIME_ROOT}/bin"
+                "${ONNXRUNTIME_ROOT}"
+            NO_DEFAULT_PATH
+        )
+        if(NOT TRACKHEADER_ONNXRUNTIME_INCLUDE_DIR OR
+           NOT TRACKHEADER_ONNXRUNTIME_LIBRARY)
+            message(FATAL_ERROR
+                "ONNXRUNTIME_ROOT must contain include/onnxruntime_cxx_api.h "
+                "and lib/onnxruntime.lib")
+        endif()
+
+        add_library(onnxruntime::onnxruntime SHARED IMPORTED GLOBAL)
+        set_target_properties(onnxruntime::onnxruntime PROPERTIES
+            IMPORTED_IMPLIB "${TRACKHEADER_ONNXRUNTIME_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${TRACKHEADER_ONNXRUNTIME_INCLUDE_DIR}"
+        )
+        if(TRACKHEADER_ONNXRUNTIME_DLL)
+            set_property(TARGET onnxruntime::onnxruntime PROPERTY
+                IMPORTED_LOCATION "${TRACKHEADER_ONNXRUNTIME_DLL}")
+        endif()
+    else()
+        find_package(onnxruntime CONFIG REQUIRED)
+    endif()
+
+    function(trackheader_stage_onnxruntime target)
+        if(TRACKHEADER_ONNXRUNTIME_DLL)
+            add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${TRACKHEADER_ONNXRUNTIME_DLL}"
+                    "$<TARGET_FILE_DIR:${target}>"
+                COMMENT "Staging ONNX Runtime DLL for ${target}"
+                VERBATIM
+            )
+        endif()
+    endfunction()
 
     # OpenCV 5 renamed the calib3d CMake target to calib while retaining the
     # public calib3d.hpp header. Keep the adapter compatible with OpenCV 4 too.
@@ -90,6 +142,7 @@ if(TRACKHEADER_BUILD_MACOS_DIAGNOSTIC)
         trackheader_network
     )
     target_compile_features(trackheader_macos_diagnostic PRIVATE cxx_std_17)
+    trackheader_stage_onnxruntime(trackheader_macos_diagnostic)
 endif()
 
 if(TRACKHEADER_BUILD_REPLAY)
@@ -98,6 +151,7 @@ if(TRACKHEADER_BUILD_REPLAY)
     )
     target_link_libraries(trackheader_video_replay PRIVATE trackheader_vision)
     target_compile_features(trackheader_video_replay PRIVATE cxx_std_17)
+    trackheader_stage_onnxruntime(trackheader_video_replay)
 endif()
 
 if(WIN32)
@@ -121,6 +175,7 @@ if(WIN32)
             user32
         )
         target_compile_features(trackheader_windows_app PRIVATE cxx_std_17)
+        trackheader_stage_onnxruntime(trackheader_windows_app)
     endif()
 elseif(TRACKHEADER_BUILD_WINDOWS_APP)
     message(FATAL_ERROR "TRACKHEADER_BUILD_WINDOWS_APP requires a Windows platform")
