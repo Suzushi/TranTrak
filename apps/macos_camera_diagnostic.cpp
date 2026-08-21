@@ -108,17 +108,6 @@ int main(int argc, char** argv)
     estimator_config.camera_width = options.width;
     estimator_config.camera_height = options.height;
 
-    trackheader::OpenCvPoseEstimator estimator;
-    if (!estimator.init(estimator_config)) {
-        std::fprintf(stderr, "diagnostic: estimator initialization failed\n");
-        return 2;
-    }
-
-    trackheader::CoreConfig core_config;
-    trackheader::TrackerCore core(core_config);
-    ConsoleSink sink;
-    core.add_sink(sink);
-
     cv::VideoCapture camera;
 #ifdef __APPLE__
     camera.open(options.camera, cv::CAP_AVFOUNDATION);
@@ -132,6 +121,26 @@ int main(int argc, char** argv)
     camera.set(cv::CAP_PROP_FRAME_WIDTH, options.width);
     camera.set(cv::CAP_PROP_FRAME_HEIGHT, options.height);
     camera.set(cv::CAP_PROP_BUFFERSIZE, 1);
+
+    const int actual_width = static_cast<int>(camera.get(cv::CAP_PROP_FRAME_WIDTH));
+    const int actual_height = static_cast<int>(camera.get(cv::CAP_PROP_FRAME_HEIGHT));
+    if (actual_width > 0 && actual_height > 0) {
+        estimator_config.camera_width = actual_width;
+        estimator_config.camera_height = actual_height;
+    }
+    std::printf("diagnostic: camera=%dx%d\n", estimator_config.camera_width,
+                estimator_config.camera_height);
+
+    trackheader::OpenCvPoseEstimator estimator;
+    if (!estimator.init(estimator_config)) {
+        std::fprintf(stderr, "diagnostic: estimator initialization failed\n");
+        return 2;
+    }
+
+    trackheader::CoreConfig core_config;
+    trackheader::TrackerCore core(core_config);
+    ConsoleSink sink;
+    core.add_sink(sink);
 
     cv::namedWindow("TrackHeader diagnostic", cv::WINDOW_AUTOSIZE);
     cv::Mat frame;
@@ -170,8 +179,10 @@ int main(int argc, char** argv)
                 cv::circle(frame, point, 1, cv::Scalar(0, 0, 255), -1);
         }
         char status[256];
-        std::snprintf(status, sizeof(status), "%.1f fps  d %.1f ms  lm %.1f ms  pnp %.1f ms  %s",
+        std::snprintf(status, sizeof(status),
+                      "%.1f fps  d %.1f ms  lm %.1f ms  pnp %.1f ms  err %.1fpx/%d  %s",
                       fps, debug.detect_ms, debug.landmark_ms, debug.pnp_ms,
+                      debug.pnp_reprojection_error_px, debug.pnp_inliers,
                       debug.face_found ? "face" : "searching");
         cv::putText(frame, status, cv::Point(8, 20), cv::FONT_HERSHEY_SIMPLEX,
                     0.48, cv::Scalar(255, 255, 0), 1, cv::LINE_AA);

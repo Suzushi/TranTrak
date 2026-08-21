@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <utility>
 
@@ -374,7 +375,9 @@ struct PnpSolver
         return true;
     }
 
-    PoseSample solve(const LandmarkResult& landmarks, std::int64_t timestamp_ns) const
+    PoseSample solve(const LandmarkResult& landmarks, std::int64_t timestamp_ns,
+                     double max_reprojection_error_px,
+                     double* reprojection_error_px, int* inlier_count) const
     {
         // Stable subset from the legacy PnpSolver.
         static constexpr std::array<int, 17> stable_indices{
@@ -383,6 +386,10 @@ struct PnpSolver
         PoseSample sample;
         sample.timestamp_ns = timestamp_ns;
         sample.confidence = landmarks.confidence;
+        if (reprojection_error_px)
+            *reprojection_error_px = std::numeric_limits<double>::infinity();
+        if (inlier_count)
+            *inlier_count = 0;
         if (!landmarks.valid || model_points.empty())
             return sample;
 
@@ -398,10 +405,33 @@ struct PnpSolver
         if (points_3d.size() < 4)
             return sample;
 
-        cv::Mat rotation_vector, translation_vector;
-        if (!cv::solvePnP(points_3d, points_2d, K, distortion,
-                          rotation_vector, translation_vector, false,
-                          cv::SOLVEPNP_ITERATIVE))
+        cv::Mat rotation_vector, translation_vector, inliers;
+        if (!cv::solvePnPRansac(points_3d, points_2d, K, distortion,
+                                rotation_vector, translation_vector, false,
+                                100, 8.0, 0.99, inliers,
+                                cv::SOLVEPNP_ITERATIVE))
+            return sample;
+
+        if (inliers.rows < 6 || translation_vector.at<double>(2, 0) <= 0.05)
+            return sample;
+
+        std::vector<cv::Point2f> projected;
+        cv::projectPoints(points_3d, rotation_vector, translation_vector,
+                          K, distortion, projected);
+        double squared_error = 0.0;
+        for (int row = 0; row < inliers.rows; ++row) {
+            const int index = inliers.at<int>(row, 0);
+            const cv::Point2f delta = projected[index] - points_2d[index];
+            squared_error += delta.dot(delta);
+        }
+        const double reprojection_error =
+            std::sqrt(squared_error / static_cast<double>(inliers.rows));
+        if (reprojection_error_px)
+            *reprojection_error_px = reprojection_error;
+        if (inlier_count)
+            *inlier_count = inliers.rows;
+        if (!std::isfinite(reprojection_error) ||
+            reprojection_error > max_reprojection_error_px)
             return sample;
 
         cv::Mat rotation;
@@ -438,12 +468,15 @@ struct OpenCvPoseEstimator::Impl
     VisionDebugInfo debug;
     bool tracking = false;
     bool ready = false;
+    PoseSample previous_pose{};
+    bool has_previous_pose = false;
 
     bool init(const OpenCvPoseEstimatorConfig& config_in)
     {
         config = config_in;
         ready = detector.init(config) && landmarks.init(config) && pnp.init(config);
         tracking = false;
+        has_previous_pose = false;
         return ready;
     }
 
@@ -451,6 +484,7 @@ struct OpenCvPoseEstimator::Impl
     {
         tracking = false;
         current_roi = {};
+        has_previous_pose = false;
     }
 };
 
@@ -532,7 +566,9 @@ PoseSample OpenCvPoseEstimator::estimate(const ImageView& input)
     }
 
     const Timer pnp_timer;
-    PoseSample result = impl_->pnp.solve(landmark, input.timestamp_ns);
+    PoseSample result = impl_->pnp.solve(
+        landmark, input.timestamp_ns, impl_->config.max_reprojection_error_px,
+        &impl_->debug.pnp_reprojection_error_px, &impl_->debug.pnp_inliers);
     impl_->debug.pnp_ms = pnp_timer.elapsed_ms();
     impl_->debug.face_roi = roi;
     impl_->debug.landmarks = landmark.points;
@@ -540,6 +576,34 @@ PoseSample OpenCvPoseEstimator::estimate(const ImageView& input)
     impl_->debug.face_found = result.valid;
 
     if (result.valid) {
+        if (impl_->has_previous_pose) {
+            const double dt = static_cast<double>(result.timestamp_ns -
+                                                  impl_->previous_pose.timestamp_ns) * 1e-9;
+            if (dt > 0.0 && dt < 0.2) {
+                double max_rotation_delta = impl_->config.max_rotation_speed_deg_s * dt;
+                double max_translation_delta = impl_->config.max_translation_speed_m_s * dt;
+                for (int axis = 0; axis < 3; ++axis) {
+                    double rotation_delta = result.pose.rotation_deg[axis] -
+                                            impl_->previous_pose.pose.rotation_deg[axis];
+                    while (rotation_delta > 180.0)
+                        rotation_delta -= 360.0;
+                    while (rotation_delta < -180.0)
+                        rotation_delta += 360.0;
+                    const double translation_delta =
+                        result.pose.translation_m[axis] - impl_->previous_pose.pose.translation_m[axis];
+                    if (std::abs(rotation_delta) > max_rotation_delta ||
+                        std::abs(translation_delta) > max_translation_delta) {
+                        result.valid = false;
+                        impl_->tracking = false;
+                        impl_->has_previous_pose = false;
+                        impl_->debug.face_found = false;
+                        return result;
+                    }
+                }
+            }
+        }
+        impl_->previous_pose = result;
+        impl_->has_previous_pose = true;
         impl_->tracking = true;
         impl_->current_roi = expand_box(landmark.bounding_box(), 0.35, frame.size());
     }

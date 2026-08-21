@@ -27,6 +27,9 @@ struct OpenCvPoseEstimatorConfig
     float face_nms_threshold = 0.3f;
     double redetect_confidence = 0.35;
     double cervical_face_model = -0.1;
+    double max_reprojection_error_px = 12.0;
+    double max_rotation_speed_deg_s = 1200.0;
+    double max_translation_speed_m_s = 2.0;
 };
 
 struct VisionDebugInfo
@@ -36,6 +39,8 @@ struct VisionDebugInfo
     double detect_ms = 0.0;
     double landmark_ms = 0.0;
     double pnp_ms = 0.0;
+    double pnp_reprojection_error_px = 0.0;
+    int pnp_inliers = 0;
     double confidence = 0.0;
     bool face_found = false;
 };

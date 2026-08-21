@@ -56,3 +56,8 @@ Use `--yunet`, `--landmark`, and `--face-model` to point at another model
 directory. The landmark adapter reads the ONNX input/output shape at startup,
 so compatible 112/14 and 224/28 model variants do not need separate flags.
 Press `C` to recenter and `Esc` to quit.
+
+The preview status reports PnP reprojection error and RANSAC inlier count.
+Frames with excessive reprojection error, impossible camera depth, or an
+unphysical frame-to-frame pose jump are rejected and trigger a fresh face
+detection.
