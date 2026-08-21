@@ -51,7 +51,15 @@ endif()
 
 if(TRACKHEADER_BUILD_VISION OR TRACKHEADER_BUILD_MACOS_DIAGNOSTIC OR
    TRACKHEADER_BUILD_REPLAY OR TRACKHEADER_BUILD_WINDOWS_APP)
-    find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio highgui objdetect)
+    find_package(OpenCV REQUIRED COMPONENTS
+        core imgproc videoio highgui objdetect
+    )
+    if(OpenCV_VERSION VERSION_GREATER_EQUAL "5.0")
+        # OpenCV 5 renamed the CMake component from calib3d to calib.
+        find_package(OpenCV REQUIRED COMPONENTS calib)
+    else()
+        find_package(OpenCV REQUIRED COMPONENTS calib3d)
+    endif()
 
     if(ONNXRUNTIME_ROOT)
         find_path(TRACKHEADER_ONNXRUNTIME_INCLUDE_DIR
