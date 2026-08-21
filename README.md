@@ -74,3 +74,23 @@ output can be enabled for OpenTrack-compatible consumers:
 The packet contains six native-endian doubles: X/Y/Z translation in
 centimeters followed by yaw/pitch/roll in degrees. The axis conversion matches
 the legacy FOXTracker sender.
+
+For camera-independent testing, build the offline replay tool:
+
+```sh
+cmake -S . -B build \
+  -DTRACKHEADER_BUILD_VISION=ON \
+  -DTRACKHEADER_BUILD_REPLAY=ON \
+  -DOpenCV_DIR="$(brew --prefix opencv)/lib/cmake/opencv5" \
+  -Donnxruntime_DIR="$(brew --prefix onnxruntime)/lib/cmake/onnxruntime"
+cmake --build build --target trackheader_video_replay
+./build/trackheader_video_replay recording.mov --out poses.csv
+```
+
+The CSV records validity, mapped pose, confidence, timing for each stage,
+reprojection error, and RANSAC inlier count.
+
+On Windows, the `trackheader_windows` target also provides
+`FreetrackPoseSink` for the legacy `FT_SharedMem` / `FT_Mutext` protocol. It
+is intentionally separate from the platform-neutral core and requires a
+Windows application host to construct and attach it.
