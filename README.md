@@ -61,3 +61,16 @@ The preview status reports PnP reprojection error and RANSAC inlier count.
 Frames with excessive reprojection error, impossible camera depth, or an
 unphysical frame-to-frame pose jump are rejected and trigger a fresh face
 detection.
+
+The diagnostic camera uses a dedicated capture thread with a single latest
+frame slot, so a slow inference pass does not build a stale frame queue. UDP
+output can be enabled for OpenTrack-compatible consumers:
+
+```sh
+./build/trackheader_macos_diagnostic \
+  --udp-host 127.0.0.1 --udp-port 4242
+```
+
+The packet contains six native-endian doubles: X/Y/Z translation in
+centimeters followed by yaw/pitch/roll in degrees. The axis conversion matches
+the legacy FOXTracker sender.

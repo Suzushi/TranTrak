@@ -22,11 +22,27 @@ target_include_directories(trackheader_core PUBLIC
 
 target_compile_features(trackheader_core PUBLIC cxx_std_17)
 
+add_library(trackheader_network STATIC
+    src/udp_pose_sink.cpp
+)
+target_include_directories(trackheader_network PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_link_libraries(trackheader_network PUBLIC trackheader_core)
+if(WIN32)
+    target_link_libraries(trackheader_network PRIVATE ws2_32)
+endif()
+target_compile_features(trackheader_network PUBLIC cxx_std_17)
+
 if(TRACKHEADER_BUILD_TESTS)
     enable_testing()
     add_executable(trackheader_core_tests tests/core_self_test.cpp)
     target_link_libraries(trackheader_core_tests PRIVATE trackheader_core)
     add_test(NAME trackheader_core_tests COMMAND trackheader_core_tests)
+
+    add_executable(trackheader_udp_sink_tests tests/udp_sink_self_test.cpp)
+    target_link_libraries(trackheader_udp_sink_tests PRIVATE trackheader_network)
+    add_test(NAME trackheader_udp_sink_tests COMMAND trackheader_udp_sink_tests)
 endif()
 
 if(TRACKHEADER_BUILD_VISION OR TRACKHEADER_BUILD_MACOS_DIAGNOSTIC)
@@ -44,6 +60,7 @@ if(TRACKHEADER_BUILD_VISION OR TRACKHEADER_BUILD_MACOS_DIAGNOSTIC)
     endif()
 
     add_library(trackheader_vision STATIC
+        src/opencv_camera_source.cpp
         src/opencv_pose_estimator.cpp
     )
     target_include_directories(trackheader_vision PUBLIC
@@ -65,6 +82,9 @@ if(TRACKHEADER_BUILD_MACOS_DIAGNOSTIC)
     add_executable(trackheader_macos_diagnostic
         apps/macos_camera_diagnostic.cpp
     )
-    target_link_libraries(trackheader_macos_diagnostic PRIVATE trackheader_vision)
+    target_link_libraries(trackheader_macos_diagnostic PRIVATE
+        trackheader_vision
+        trackheader_network
+    )
     target_compile_features(trackheader_macos_diagnostic PRIVATE cxx_std_17)
 endif()

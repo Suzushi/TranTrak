@@ -5,11 +5,12 @@
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
-#include <opencv2/videoio.hpp>
 
+#include "trackheader/opencv_camera_source.h"
 #include "trackheader/opencv_pose_estimator.h"
 #include "trackheader/pose_sink.h"
 #include "trackheader/tracker_core.h"
+#include "trackheader/udp_pose_sink.h"
 
 namespace {
 
@@ -22,6 +23,8 @@ struct Options
     std::string landmark = "models/lm_model1_opt.onnx";
     std::string face_model = "models/model_66.txt";
     std::string calibration;
+    std::string udp_host;
+    int udp_port = 0;
 };
 
 bool next_arg(int& index, int argc, char** argv, std::string& value)
@@ -52,6 +55,11 @@ bool parse_options(int argc, char** argv, Options& options)
             if (!next_arg(i, argc, argv, options.face_model)) return false;
         } else if (!std::strcmp(argv[i], "--calibration")) {
             if (!next_arg(i, argc, argv, options.calibration)) return false;
+        } else if (!std::strcmp(argv[i], "--udp-host")) {
+            if (!next_arg(i, argc, argv, options.udp_host)) return false;
+        } else if (!std::strcmp(argv[i], "--udp-port")) {
+            if (!next_arg(i, argc, argv, value)) return false;
+            options.udp_port = std::stoi(value);
         } else if (!std::strcmp(argv[i], "--help")) {
             return false;
         } else {
@@ -67,7 +75,7 @@ void print_usage(const char* program)
     std::fprintf(stderr,
         "usage: %s [--camera N] [--width N] [--height N]\n"
         "       [--yunet path] [--landmark path] [--face-model path]\n"
-        "       [--calibration path]\n\n"
+        "       [--calibration path] [--udp-host HOST --udp-port N]\n\n"
         "Press ESC in the preview window to quit, C to recenter.\n", program);
 }
 
@@ -108,26 +116,18 @@ int main(int argc, char** argv)
     estimator_config.camera_width = options.width;
     estimator_config.camera_height = options.height;
 
-    cv::VideoCapture camera;
-#ifdef __APPLE__
-    camera.open(options.camera, cv::CAP_AVFOUNDATION);
-#else
-    camera.open(options.camera);
-#endif
-    if (!camera.isOpened()) {
+    trackheader::OpenCvCameraConfig camera_config;
+    camera_config.camera = options.camera;
+    camera_config.width = options.width;
+    camera_config.height = options.height;
+    trackheader::OpenCvCameraSource camera;
+    if (!camera.start(camera_config)) {
         std::fprintf(stderr, "diagnostic: can't open camera %d\n", options.camera);
         return 3;
     }
-    camera.set(cv::CAP_PROP_FRAME_WIDTH, options.width);
-    camera.set(cv::CAP_PROP_FRAME_HEIGHT, options.height);
-    camera.set(cv::CAP_PROP_BUFFERSIZE, 1);
 
-    const int actual_width = static_cast<int>(camera.get(cv::CAP_PROP_FRAME_WIDTH));
-    const int actual_height = static_cast<int>(camera.get(cv::CAP_PROP_FRAME_HEIGHT));
-    if (actual_width > 0 && actual_height > 0) {
-        estimator_config.camera_width = actual_width;
-        estimator_config.camera_height = actual_height;
-    }
+    estimator_config.camera_width = camera.width();
+    estimator_config.camera_height = camera.height();
     std::printf("diagnostic: camera=%dx%d\n", estimator_config.camera_width,
                 estimator_config.camera_height);
 
@@ -141,6 +141,17 @@ int main(int argc, char** argv)
     trackheader::TrackerCore core(core_config);
     ConsoleSink sink;
     core.add_sink(sink);
+    trackheader::UdpPoseSink udp_sink(options.udp_host,
+                                      static_cast<std::uint16_t>(options.udp_port));
+    if (!options.udp_host.empty() || options.udp_port != 0) {
+        if (!udp_sink.open()) {
+            std::fprintf(stderr, "diagnostic: UDP sink initialization failed\n");
+            return 2;
+        }
+        core.add_sink(udp_sink);
+        std::printf("diagnostic: UDP output=%s:%d\n",
+                    options.udp_host.c_str(), options.udp_port);
+    }
 
     cv::namedWindow("TrackHeader diagnostic", cv::WINDOW_AUTOSIZE);
     cv::Mat frame;
@@ -149,14 +160,13 @@ int main(int argc, char** argv)
     double fps = 0.0;
 
     for (;;) {
-        // grab/retrieve keeps the capture boundary explicit and avoids using
-        // a growing application queue when the model is slower than the camera.
-        if (!camera.grab() || !camera.retrieve(frame) || frame.empty())
+        // The source keeps only the newest captured frame, so a slow model
+        // cannot make the diagnostic loop consume stale frames.
+        std::int64_t timestamp_ns = 0;
+        if (!camera.grab_latest(frame, timestamp_ns) || frame.empty())
             continue;
 
         const auto now = std::chrono::steady_clock::now();
-        const auto timestamp_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            now.time_since_epoch()).count();
         trackheader::ImageView image{frame.data, frame.cols, frame.rows,
                                      static_cast<int>(frame.step),
                                      trackheader::PixelFormat::bgr8, timestamp_ns};
@@ -195,7 +205,7 @@ int main(int argc, char** argv)
             core.center();
     }
 
-    camera.release();
+    camera.stop();
     cv::destroyAllWindows();
     return 0;
 }
