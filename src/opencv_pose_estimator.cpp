@@ -212,6 +212,45 @@ struct LandmarkModel
             return false;
         }
 
+        try {
+            Ort::AllocatorWithDefaultOptions allocator;
+            auto input_name_allocated = session->GetInputNameAllocated(0, allocator);
+            auto output_name_allocated = session->GetOutputNameAllocated(0, allocator);
+            input_name = input_name_allocated.get();
+            output_name = output_name_allocated.get();
+
+            const auto input_shape = session->GetInputTypeInfo(0)
+                                         .GetTensorTypeAndShapeInfo().GetShape();
+            if (input_shape.size() != 4 || input_shape[1] != 3 ||
+                input_shape[2] <= 0 || input_shape[2] != input_shape[3]) {
+                std::fprintf(stderr,
+                             "landmark: unsupported input shape for '%s'\n",
+                             config.landmark_model_path.c_str());
+                return false;
+            }
+            nn_size = static_cast<int>(input_shape[2]);
+
+            const auto output_shape = session->GetOutputTypeInfo(0)
+                                          .GetTensorTypeAndShapeInfo().GetShape();
+            if (output_shape.size() != 4 || output_shape[1] != kOutputChannels ||
+                output_shape[2] <= 0 || output_shape[2] != output_shape[3]) {
+                std::fprintf(stderr,
+                             "landmark: unsupported output shape for '%s'\n",
+                             config.landmark_model_path.c_str());
+                return false;
+            }
+            nn_output = static_cast<int>(output_shape[2]);
+        } catch (const Ort::Exception& error) {
+            std::fprintf(stderr, "landmark: failed to inspect model '%s': %s\n",
+                         config.landmark_model_path.c_str(), error.what());
+            return false;
+        }
+
+        if (nn_size != config.landmark_nn_size || nn_output != config.landmark_nn_output) {
+            std::fprintf(stderr, "landmark: using model shape input=%dx%d heatmap=%dx%d\n",
+                         nn_size, nn_size, nn_output, nn_output);
+        }
+
         input_buffer.resize(static_cast<size_t>(nn_size) * nn_size * 3);
         return true;
     }

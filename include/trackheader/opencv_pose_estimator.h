@@ -19,6 +19,8 @@ struct OpenCvPoseEstimatorConfig
 
     int camera_width = 640;
     int camera_height = 480;
+    // Used as a fallback/documentation value. init() reads the actual ONNX
+    // shape, so models with 112/14 and 224/28 layouts are both supported.
     int landmark_nn_size = 112;
     int landmark_nn_output = 14;
     float face_score_threshold = 0.6f;

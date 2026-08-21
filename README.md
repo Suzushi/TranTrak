@@ -53,4 +53,6 @@ The diagnostic expects these model files under `models/` by default:
 - `model_66.txt`
 
 Use `--yunet`, `--landmark`, and `--face-model` to point at another model
-directory. Press `C` to recenter and `Esc` to quit.
+directory. The landmark adapter reads the ONNX input/output shape at startup,
+so compatible 112/14 and 224/28 model variants do not need separate flags.
+Press `C` to recenter and `Esc` to quit.
