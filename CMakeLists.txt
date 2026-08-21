@@ -10,6 +10,7 @@ option(TRACKHEADER_BUILD_TESTS "Build core self-tests" ON)
 option(TRACKHEADER_BUILD_VISION "Build OpenCV/ONNX Runtime vision adapter" OFF)
 option(TRACKHEADER_BUILD_MACOS_DIAGNOSTIC "Build the macOS camera diagnostic" OFF)
 option(TRACKHEADER_BUILD_REPLAY "Build the offline video replay tool" OFF)
+option(TRACKHEADER_BUILD_WINDOWS_APP "Build the Windows head-tracking host" OFF)
 
 add_library(trackheader_core STATIC
     src/pose_mapper.cpp
@@ -46,7 +47,8 @@ if(TRACKHEADER_BUILD_TESTS)
     add_test(NAME trackheader_udp_sink_tests COMMAND trackheader_udp_sink_tests)
 endif()
 
-if(TRACKHEADER_BUILD_VISION OR TRACKHEADER_BUILD_MACOS_DIAGNOSTIC OR TRACKHEADER_BUILD_REPLAY)
+if(TRACKHEADER_BUILD_VISION OR TRACKHEADER_BUILD_MACOS_DIAGNOSTIC OR
+   TRACKHEADER_BUILD_REPLAY OR TRACKHEADER_BUILD_WINDOWS_APP)
     find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio highgui objdetect)
     find_package(onnxruntime CONFIG REQUIRED)
 
@@ -107,4 +109,19 @@ if(WIN32)
     )
     target_link_libraries(trackheader_windows PUBLIC trackheader_core)
     target_compile_features(trackheader_windows PUBLIC cxx_std_17)
+
+    if(TRACKHEADER_BUILD_WINDOWS_APP)
+        add_executable(trackheader_windows_app
+            apps/windows_tracker.cpp
+        )
+        target_link_libraries(trackheader_windows_app PRIVATE
+            trackheader_vision
+            trackheader_network
+            trackheader_windows
+            user32
+        )
+        target_compile_features(trackheader_windows_app PRIVATE cxx_std_17)
+    endif()
+elseif(TRACKHEADER_BUILD_WINDOWS_APP)
+    message(FATAL_ERROR "TRACKHEADER_BUILD_WINDOWS_APP requires a Windows platform")
 endif()

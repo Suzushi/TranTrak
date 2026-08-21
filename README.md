@@ -94,3 +94,18 @@ On Windows, the `trackheader_windows` target also provides
 `FreetrackPoseSink` for the legacy `FT_SharedMem` / `FT_Mutext` protocol. It
 is intentionally separate from the platform-neutral core and requires a
 Windows application host to construct and attach it.
+
+The first Windows host is a headless diagnostic executable. Configure it with
+the same model paths used by the macOS diagnostic:
+
+```sh
+cmake -S . -B build \
+  -DTRACKHEADER_BUILD_VISION=ON \
+  -DTRACKHEADER_BUILD_WINDOWS_APP=ON \
+  -DOpenCV_DIR=... -Donnxruntime_DIR=...
+cmake --build build --target trackheader_windows_app
+./build/trackheader_windows_app --no-freetrack --frames 300
+```
+
+It uses DirectShow through OpenCV, sends FreeTrack by default, optionally
+sends UDP, and binds `Alt+C` for recentering. `Ctrl+C` stops the process.
